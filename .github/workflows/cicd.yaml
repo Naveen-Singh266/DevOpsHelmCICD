@@ -1,0 +1,171 @@
+name: Helm EKS CI-CD
+
+on:
+
+  push:
+
+    branches:
+      - main
+
+permissions:
+
+  contents: read
+
+  id-token: write
+
+env:
+
+  AWS_REGION: ap-south-1
+
+  EKS_CLUSTER_NAME: interesting-metal-monster
+
+  DOCKER_IMAGE: naveen266/devops-app
+
+jobs:
+
+  build-and-deploy:
+
+    name: Build Docker Image and Deploy with Helm
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # --------------------------------
+      # 1. Checkout source code
+      # --------------------------------
+
+      - name: Checkout Code
+
+        uses: actions/checkout@v4
+
+
+      # --------------------------------
+      # 2. Login to Docker Hub
+      # --------------------------------
+
+      - name: Login to Docker Hub
+
+        uses: docker/login-action@v3
+
+        with:
+
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+
+      # --------------------------------
+      # 3. Set Docker image tag
+      # --------------------------------
+
+      - name: Set Image Tag
+
+        id: image
+
+        shell: bash
+
+        run: |
+
+          echo "tag=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+
+      # --------------------------------
+      # 4. Build Docker image
+      # --------------------------------
+
+      - name: Build Docker Image
+
+        run: |
+
+          docker build \
+            -t ${{ env.DOCKER_IMAGE }}:${{ steps.image.outputs.tag }} .
+
+
+      # --------------------------------
+      # 5. Push Docker image
+      # --------------------------------
+
+      - name: Push Docker Image
+
+        run: |
+
+          docker push \
+            ${{ env.DOCKER_IMAGE }}:${{ steps.image.outputs.tag }}
+
+
+      # --------------------------------
+      # 6. Configure AWS credentials
+      # --------------------------------
+
+      - name: Configure AWS Credentials
+
+        uses: aws-actions/configure-aws-credentials@v4
+
+        with:
+
+          role-to-assume: arn:aws:iam::636467504913:role/NS-OIDC
+
+          aws-region: ${{ env.AWS_REGION }}
+
+
+      # --------------------------------
+      # 7. Configure kubectl
+      # --------------------------------
+
+      - name: Configure EKS
+
+        run: |
+
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER_NAME }}
+
+
+      # --------------------------------
+      # 8. Verify EKS connection
+      # --------------------------------
+
+      - name: Check EKS
+
+        run: |
+
+          kubectl get nodes
+
+
+      # --------------------------------
+      # 9. Install Helm
+      # --------------------------------
+
+      - name: Setup Helm
+
+        uses: azure/setup-helm@v4
+
+
+      # --------------------------------
+      # 10. Helm deployment
+      # --------------------------------
+
+      - name: Deploy using Helm
+
+        run: |
+
+          helm upgrade --install devops-app \
+            ./helm/devops-app \
+            --set image.repository=${{ env.DOCKER_IMAGE }} \
+            --set image.tag=${{ steps.image.outputs.tag }}
+
+
+      # --------------------------------
+      # 11. Verify deployment
+      # --------------------------------
+
+      - name: Verify Kubernetes Deployment
+
+        run: |
+
+          kubectl get pods
+
+          kubectl get deployment
+
+          kubectl get service
