@@ -151,7 +151,7 @@ jobs:
         run: |
 
           helm upgrade --install devops-app \
-            ./helm/devops-app \
+            ./devops-app \
             --set image.repository=${{ env.DOCKER_IMAGE }} \
             --set image.tag=${{ steps.image.outputs.tag }}
 
